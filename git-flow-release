@@ -564,20 +564,21 @@ u,signingkey!       Use the given GPG-key for the digital signature (implies -s)
 m,message!          Use the given tag message
 f,[no]messagefile=  Use the contents of the given file as a tag message
 p,[no]push          Push to origin after performing finish
-[no]pushproduction  Push the production branch
-[no]pushdevelop     Push the develop branch
-[no]pushtag         Push the tag
+1,[no]pushproduction  Push the production branch
+2,[no]pushdevelop     Push the develop branch
+3,[no]pushtag         Push the tag
 k,[no]keep          Keep branch after performing finish
-[no]keepremote      Keep the remote branch
-[no]keeplocal       Keep the local branch
+4,[no]keepremote      Keep the remote branch
+5,[no]keeplocal       Keep the local branch
 D,[no]force_delete  Force delete release branch after finish
 n,[no]tag           Don't tag this release
 b,[no]nobackmerge   Don't back-merge master, or tag if applicable, in develop
 S,[no]squash        Squash release during merge
-[no]ff-master       Fast forward master branch if possible
+6,[no]squash-info      Add branch info during squash
+7,[no]ff-master       Fast forward master branch if possible
 e,[no]edit          The --noedit option can be used to accept the auto-generated message on merging
 T,tagname!          Use given tag name
-nodevelopmerge!  Don't back-merge develop branch
+8,nodevelopmerge!  Don't back-merge develop branch
 "
 	
 	local base
@@ -589,21 +590,21 @@ nodevelopmerge!  Don't back-merge develop branch
 	DEFINE_string  'message' "" "use the given tag message" m
 	DEFINE_string  'messagefile' "" "use the contents of the given file as a tag message" f
 	DEFINE_boolean 'push' false "push to $ORIGIN after performing finish" p
-	DEFINE_boolean 'pushproduction' false "push the production branch"
-	DEFINE_boolean 'pushdevelop' false "push the develop branch"
-	DEFINE_boolean 'pushtag' false "push the tag"
+	DEFINE_boolean 'pushproduction' false "push the production branch" 1
+	DEFINE_boolean 'pushdevelop' false "push the develop branch" 2
+	DEFINE_boolean 'pushtag' false "push the tag" 3
 	DEFINE_boolean 'keep' false "keep branch after performing finish" k
-	DEFINE_boolean 'keepremote' false "keep the remote branch"
-	DEFINE_boolean 'keeplocal' false "keep the local branch"
+	DEFINE_boolean 'keepremote' false "keep the remote branch" 4
+	DEFINE_boolean 'keeplocal' false "keep the local branch" 5
 	DEFINE_boolean 'force_delete' false "force delete release branch after finish" D
 	DEFINE_boolean 'notag' false "don't tag this release" n
 	DEFINE_boolean 'nobackmerge' false "don't back-merge $MASTER_BRANCH, or tag if applicable, in $DEVELOP_BRANCH " b
 	DEFINE_boolean 'squash' false "squash release during merge" S
-	DEFINE_boolean 'squash-info' false "add branch info during squash"
-	DEFINE_boolean 'ff-master' false "fast forward master branch if possible"
+	DEFINE_boolean 'squash-info' false "add branch info during squash" 6
+	DEFINE_boolean 'ff-master' false "fast forward master branch if possible" 7
 	DEFINE_boolean 'edit' true "accept the auto-generated message on merging" e
 	DEFINE_string  'tagname' "" "use the given tag name" T
-	DEFINE_boolean 'nodevelopmerge' false "don't merge $BRANCH into $DEVELOP_BRANCH "
+	DEFINE_boolean 'nodevelopmerge' false "don't merge $BRANCH into $DEVELOP_BRANCH " 8
 
 	# Override defaults with values from config
 	gitflow_override_flag_boolean   "release.finish.fetch"          "fetch"
@@ -817,27 +818,28 @@ git flow release finish [-h] [-F] [-s] [-u] [-m | -f] [-p] [-k] [-n] [-b] [-S] [
 Finish a release branch
 --
 h,help              Show this help
-showcommands!       Show git commands while executing them
+v,showcommands!       Show git commands while executing them
 F,[no]fetch         Fetch from origin before performing finish
 s,sign!             Sign the release tag cryptographically
 u,signingkey!       Use the given GPG-key for the digital signature (implies -s)
 m,message!          Use the given tag message
 f,[no]messagefile=  Use the contents of the given file as a tag message
 p,[no]push          Push to origin after performing finish
-[no]pushproduction  Push the production branch
-[no]pushdevelop     Push the develop branch
-[no]pushtag         Push the tag
+1,[no]pushproduction  Push the production branch
+2,[no]pushdevelop     Push the develop branch
+3,[no]pushtag         Push the tag
 k,[no]keep          Keep branch after performing finish
-[no]keepremote      Keep the remote branch
-[no]keeplocal       Keep the local branch
+4,[no]keepremote      Keep the remote branch
+5,[no]keeplocal       Keep the local branch
 D,[no]force_delete  Force delete release branch after finish
 n,[no]tag           Don't tag this release
 b,[no]nobackmerge   Don't back-merge master, or tag if applicable, in develop
 S,[no]squash        Squash release during merge
-[no]ff-master       Fast forward master branch if possible
+6,[no]squash-info     Add branch info during squash
+7,[no]ff-master       Fast forward master branch if possible
 e,[no]edit          The --noedit option can be used to accept the auto-generated message on merging
 T,tagname!          Use given tag name
-nodevelopmerge!  Don't back-merge develop branch
+8,nodevelopmerge!  Don't back-merge develop branch
 "
 	# Define flags
 	DEFINE_boolean 'fetch' false "fetch from $ORIGIN before performing finish" F
@@ -846,21 +848,21 @@ nodevelopmerge!  Don't back-merge develop branch
 	DEFINE_string  'message' "" "use the given tag message" m
 	DEFINE_string  'messagefile' "" "use the contents of the given file as a tag message" f
 	DEFINE_boolean 'push' false "push to $ORIGIN after performing finish" p
-	DEFINE_boolean 'pushproduction' false "push the production branch"
-	DEFINE_boolean 'pushdevelop' false "push the develop branch"
-	DEFINE_boolean 'pushtag' false "push the tag"
+	DEFINE_boolean 'pushproduction' false "push the production branch" 1
+	DEFINE_boolean 'pushdevelop' false "push the develop branch" 2
+	DEFINE_boolean 'pushtag' false "push the tag" 3
 	DEFINE_boolean 'keep' false "keep branch after performing finish" k
-	DEFINE_boolean 'keepremote' false "keep the remote branch"
-	DEFINE_boolean 'keeplocal' false "keep the local branch"
+	DEFINE_boolean 'keepremote' false "keep the remote branch" 4
+	DEFINE_boolean 'keeplocal' false "keep the local branch" 5
 	DEFINE_boolean 'force_delete' false "force delete release branch after finish" D
 	DEFINE_boolean 'notag' false "don't tag this release" n
 	DEFINE_boolean 'nobackmerge' false "don't back-merge $MASTER_BRANCH, or tag if applicable, in $DEVELOP_BRANCH " b
 	DEFINE_boolean 'squash' false "squash release during merge" S
-	DEFINE_boolean 'squash-info' false "add branch info during squash"
-	DEFINE_boolean 'ff-master' false "fast forward master branch if possible"
+	DEFINE_boolean 'squash-info' false "add branch info during squash" 6
+	DEFINE_boolean 'ff-master' false "fast forward master branch if possible" 7
 	DEFINE_boolean 'edit' true "accept the auto-generated message on merging" e
 	DEFINE_string  'tagname' "" "use the given tag name" T
-	DEFINE_boolean 'nodevelopmerge' false "don't merge $BRANCH into $DEVELOP_BRANCH "
+	DEFINE_boolean 'nodevelopmerge' false "don't merge $BRANCH into $DEVELOP_BRANCH " 8
 
 	# Override defaults with values from config
 	gitflow_override_flag_boolean   "release.finish.fetch"          "fetch"
