@@ -544,7 +544,9 @@ c:,file=    use given config file
 	fi
 
 	# TODO: what to do with origin?
-}cmd_help() {
+}
+
+cmd_help() {
 	usage
 	exit 0
 }
