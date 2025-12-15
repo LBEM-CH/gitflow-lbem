@@ -103,6 +103,7 @@ usage() {
 	echo "   version   Shows version information."
 	echo "   config    Manage your git-flow configuration."
 	echo "   log       Show log deviating from base branch."
+	echo "   sync      Sync current branch with its base (shortcut)."
 	echo
 	echo "Try 'git flow <subcommand> help' for details."
 }
@@ -128,8 +129,27 @@ main() {
 
 	# Sanity checks
 	SUBCOMMAND="$1"; shift
-	if [ "${SUBCOMMAND}" = "finish" ] || [ "${SUBCOMMAND}" = "delete" ] || [ "${SUBCOMMAND}" = "publish" ] || [ "${SUBCOMMAND}" = "rebase" ]; then
+	if [ "${SUBCOMMAND}" = "finish" ] || [ "${SUBCOMMAND}" = "delete" ] || [ "${SUBCOMMAND}" = "publish" ] || [ "${SUBCOMMAND}" = "rebase" ] || [ "${SUBCOMMAND}" = "sync" ]; then
 		_current_branch=$(git_current_branch)
+		
+		# Handle sync on develop/main branches specially
+		if [ "${SUBCOMMAND}" = "sync" ]; then
+			_develop_branch=$(git config --get gitflow.branch.develop 2>/dev/null)
+			_master_branch=$(git config --get gitflow.branch.master 2>/dev/null)
+			if [ "${_current_branch}" = "${_develop_branch}" ] || [ "${_current_branch}" = "${_master_branch}" ]; then
+				# For develop/main, just do a pull
+				echo "Syncing branch '${_current_branch}'..."
+				git fetch -q origin || { echo "Could not fetch from origin."; exit 1; }
+				if git rev-parse --verify "origin/${_current_branch}" >/dev/null 2>&1; then
+					git merge --ff-only "origin/${_current_branch}" || { echo "Could not fast-forward '${_current_branch}'. You may need to merge manually."; exit 1; }
+					echo "Branch '${_current_branch}' is now up to date with 'origin/${_current_branch}'."
+				else
+					echo "No remote tracking branch for '${_current_branch}'."
+				fi
+				exit 0
+			fi
+		fi
+		
 		if gitflow_is_prefixed_branch "${_current_branch}"; then
 			if startswith "${_current_branch}" $(git config --get gitflow.prefix.feature); then
 				SUBACTION="${SUBCOMMAND}"

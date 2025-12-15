@@ -62,6 +62,7 @@ git flow bugfix delete
 git flow bugfix rename
 git flow bugfix sync
 git flow bugfix propose
+git flow bugfix pr
 
 Manage your bugfix branches.
 
@@ -337,6 +338,23 @@ no-ff!                 Never fast-forward during the merge
 	BASE_BRANCH=$(gitflow_config_get_base_branch $BRANCH)
 	BASE_BRANCH=${BASE_BRANCH:-$DEVELOP_BRANCH}
 	git_local_branch_exists "$BASE_BRANCH" || die "The base '$BASE_BRANCH' doesn't exists locally or is not a branch. Can't finish the bugfix branch '$BRANCH'."
+
+	# LBEM Edition: Check if branch was already merged on GitHub/GitLab
+	# This handles the case where user did 'propose', merged on remote, and now runs 'finish'
+	if flag fetch; then
+		git_fetch_branch "$ORIGIN" "$BASE_BRANCH"
+	fi
+	if ! git_remote_branch_exists "$ORIGIN/$BRANCH"; then
+		# Remote branch doesn't exist - check if it was merged
+		if git_is_branch_merged_into "$BRANCH" "$BASE_BRANCH"; then
+			echo "Branch '$BRANCH' appears to have been merged and deleted on remote."
+			echo "Cleaning up local branch..."
+			run_pre_hook "$NAME" "$ORIGIN" "$BRANCH"
+			gitflow_config_remove_base_branch "$BRANCH"
+			helper_finish_cleanup
+			exit 0
+		fi
+	fi
 
 	# Detect if we're restoring from a merge conflict
 	if [ -f "$DOT_GIT_DIR/.gitflow/MERGE_BASE" ]; then
@@ -883,33 +901,40 @@ showcommands!    Show git commands while executing them
 #
 cmd_sync() {
 	OPTIONS_SPEC="\
-git flow bugfix sync [-h] [-p] [<name|nameprefix>]
+git flow bugfix sync [-h] [-p] [--prune] [<name|nameprefix>]
 
 Synchronize bugfix branch <name> with its base branch (like git-town sync).
 This will:
   1. Stash any uncommitted changes
-  2. Fetch updates from origin
+  2. Fetch updates from origin (with prune)
   3. Update the base branch
   4. Rebase or merge the bugfix branch on the updated base (configurable)
   5. Push the bugfix branch to origin (if -p flag or config)
-  6. Restore stashed changes
+  6. Optionally prune local branches that were deleted on remote
+  7. Restore stashed changes
 
 When <name> is omitted the current branch is used, but only if it's a bugfix branch.
 --
 h,help!          Show this help
 showcommands!    Show git commands while executing them
 p,[no]push       Push to origin after sync
+[no]prune        Prune local branches deleted on remote (default: prompt)
 "
-	local did_stash sync_strategy
+	local did_stash sync_strategy prune_behavior
 
 	# Define flags
 	DEFINE_boolean 'push' false "push to $ORIGIN after sync" p
+	DEFINE_boolean 'prune' true "prune local branches deleted on remote"
 
 	# Override defaults with values from config
 	gitflow_override_flag_boolean "bugfix.sync.push" "push"
 
 	# Parse arguments
 	parse_args "$@"
+
+	# Get prune behavior from config
+	prune_behavior=$(git config --get gitflow.sync.prune 2>/dev/null)
+	[ -z "$prune_behavior" ] && prune_behavior="prompt"
 
 	# Use current branch if no name is given
 	if [ "$NAME" = "" ]; then
@@ -931,9 +956,9 @@ p,[no]push       Push to origin after sync
 	gitflow_stash_save
 	did_stash=$?
 
-	# Step 2: Fetch from origin
+	# Step 2: Fetch from origin (with prune)
 	echo "Fetching from '$ORIGIN'..."
-	git_do fetch -q "$ORIGIN" || die "Could not fetch from '$ORIGIN'."
+	git_do fetch -q --prune "$ORIGIN" || die "Could not fetch from '$ORIGIN'."
 
 	# Step 3: Update base branch if it has a remote counterpart
 	if git_remote_branch_exists "$ORIGIN/$BASE_BRANCH"; then
@@ -990,7 +1015,12 @@ p,[no]push       Push to origin after sync
 		fi
 	fi
 
-	# Step 6: Restore stashed changes
+	# Step 6: Prune stale local branches
+	if flag prune; then
+		gitflow_prune_branches "$prune_behavior"
+	fi
+
+	# Step 7: Restore stashed changes
 	gitflow_stash_pop $did_stash
 
 	run_post_hook "$NAME" "$ORIGIN" "$BRANCH" "$BASE_BRANCH"
@@ -1001,6 +1031,9 @@ p,[no]push       Push to origin after sync
 	if flag push; then
 		echo "- Bugfix branch '$BRANCH' was pushed to '$ORIGIN'"
 	fi
+	if flag prune; then
+		echo "- Stale remote-tracking branches were pruned"
+	fi
 	echo "- You are now on branch '$(git_current_branch)'"
 	echo
 }
@@ -1010,7 +1043,7 @@ p,[no]push       Push to origin after sync
 #
 cmd_propose() {
 	OPTIONS_SPEC="\
-git flow bugfix propose [-h] [<name|nameprefix>]
+git flow bugfix propose [-h] [-d] [-a <user>] [-r <user>] [-l <labels>] [<name|nameprefix>]
 
 Create a pull request (or merge request) for bugfix branch <name>.
 This will:
@@ -1021,7 +1054,25 @@ When <name> is omitted the current branch is used, but only if it's a bugfix bra
 --
 h,help!          Show this help
 showcommands!    Show git commands while executing them
+d,[no]draft      Create as draft PR
+a,assignee=      Assign PR to user (use @me for self)
+r,reviewer=      Request review from user
+l,label=         Add labels (comma-separated)
 "
+	local _draft _assignee _reviewer _labels
+
+	# Define flags
+	DEFINE_boolean 'draft' false 'create as draft PR' d
+	DEFINE_string 'assignee' '' 'assign PR to user' a
+	DEFINE_string 'reviewer' '' 'request review from user' r
+	DEFINE_string 'label' '' 'add labels (comma-separated)' l
+
+	# Override defaults with values from config
+	gitflow_override_flag_boolean "bugfix.propose.draft" "draft"
+	gitflow_override_flag_string "bugfix.propose.assignee" "assignee"
+	gitflow_override_flag_string "bugfix.propose.reviewer" "reviewer"
+	gitflow_override_flag_string "bugfix.propose.labels" "label"
+
 	# Parse arguments
 	parse_args "$@"
 
@@ -1049,8 +1100,18 @@ showcommands!    Show git commands while executing them
 		git_do push "$ORIGIN" "$BRANCH" || die "Could not push '$BRANCH' to '$ORIGIN'."
 	fi
 
-	# Create PR
-	gitflow_create_pr "$BRANCH" "$BASE_BRANCH" "bugfix"
+	# Convert flag values
+	if flag draft; then
+		_draft="true"
+	else
+		_draft="false"
+	fi
+	_assignee="$FLAGS_assignee"
+	_reviewer="$FLAGS_reviewer"
+	_labels="$FLAGS_label"
+
+	# Create PR with options
+	gitflow_create_pr "$BRANCH" "$BASE_BRANCH" "bugfix" "$_draft" "$_assignee" "$_reviewer" "$_labels"
 
 	run_post_hook "$NAME" "$ORIGIN" "$BRANCH" "$BASE_BRANCH"
 
@@ -1060,4 +1121,11 @@ showcommands!    Show git commands while executing them
 	echo "- A pull request was created (or browser opened) targeting '$BASE_BRANCH'"
 	echo "- You are now on branch '$(git_current_branch)'"
 	echo
+}
+
+#
+# LBEM Edition: PR alias for propose
+#
+cmd_pr() {
+	cmd_propose "$@"
 }
