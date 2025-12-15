@@ -40,7 +40,7 @@
 #
 
 
-GITFLOW_VERSION=2.2.1-lbem.2
+GITFLOW_VERSION=2.2.1-lbem.3
 
 initialize() {
 	# A function can not be empty. Comments count as empty.
