@@ -11,6 +11,7 @@
 #    http://github.com/CJ-Systems/gitflow-cjs
 #
 # Authors:
+# Copyright 2025 LBEM. All rights reserved.
 # Copyright 2003 CJ Systems. All rights reserved.
 # Copyright 2012-2019 Peter van der Does. All rights reserved.
 #
@@ -43,10 +44,11 @@
 # Called when the base of the release is the $DEVELOP_BRANCH
 #
 _finish_from_develop() {
-	local opts merge_branch commit keepmsg remotebranchdeleted localbranchdeleted compare_refs_result merge_result
+	local opts merge_branch commit keepmsg remotebranchdeleted localbranchdeleted compare_refs_result merge_result release_created
 	
 	remotebranchdeleted=$FLAGS_FALSE
 	localbranchdeleted=$FLAGS_FALSE
+	release_created=$FLAGS_FALSE
 
 	# Update local branches with remote branches
 	if flag fetch; then
@@ -198,6 +200,12 @@ _finish_from_develop() {
 		fi
 	fi
 
+	# Create GitHub/GitLab release if requested
+	if noflag notag && flag create-release; then
+		gitflow_create_release "$VERSION_PREFIX$TAGNAME" "$VERSION_PREFIX$TAGNAME"
+		release_created=$FLAGS_TRUE
+	fi
+
 	# Delete branch
 	if noflag keep; then
 
@@ -266,6 +274,9 @@ _finish_from_develop() {
 	if flag push; then
 		echo "- '$DEVELOP_BRANCH', '$MASTER_BRANCH' and tags have been pushed to '$ORIGIN'"
 	fi
+	if [ $release_created -eq $FLAGS_TRUE ]; then
+		echo "- A GitHub/GitLab release was created for '$VERSION_PREFIX$TAGNAME'"
+	fi
 	echo "- You are now on branch '$(git_current_branch)'"
 	echo
 }
@@ -276,10 +287,11 @@ _finish_from_develop() {
 #
 
 _finish_base() {
-	local opts merge_branch commit keepmsg localbranchdeleted remotebranchdeleted
+	local opts merge_branch commit keepmsg localbranchdeleted remotebranchdeleted release_created
 
 	remotebranchdeleted=$FLAGS_FALSE
 	localbranchdeleted=$FLAGS_FALSE
+	release_created=$FLAGS_FALSE
 
 	# Update local branches with remote branches
 	if flag fetch; then
@@ -386,6 +398,12 @@ _finish_base() {
 		fi
 	fi
 
+	# Create GitHub/GitLab release if requested
+	if noflag notag && flag create-release; then
+		gitflow_create_release "$VERSION_PREFIX$TAGNAME" "$VERSION_PREFIX$TAGNAME"
+		release_created=$FLAGS_TRUE
+	fi
+
 	echo
 	echo "Summary of actions:"
 	if flag fetch; then
@@ -418,6 +436,9 @@ _finish_base() {
 	if flag push; then
 		echo "- '$BASE_BRANCH' and tags have been pushed to '$ORIGIN'"
 	fi
+	if [ $release_created -eq $FLAGS_TRUE ]; then
+		echo "- A GitHub/GitLab release was created for '$VERSION_PREFIX$TAGNAME'"
+	fi
 	echo "- You are now on branch '$(git_current_branch)'"
 	echo
 }
@@ -437,6 +458,7 @@ git flow release start
 git flow release finish
 git flow release branch
 git flow release publish
+git flow release sync
 git flow release track
 git flow release rebase
 git flow release delete
@@ -840,6 +862,7 @@ S,[no]squash        Squash release during merge
 e,[no]edit          The --noedit option can be used to accept the auto-generated message on merging
 T,tagname!          Use given tag name
 8,nodevelopmerge!  Don't back-merge develop branch
+9,[no]create-release  Create a GitHub/GitLab release for the tag
 "
 	# Define flags
 	DEFINE_boolean 'fetch' false "fetch from $ORIGIN before performing finish" F
@@ -863,6 +886,7 @@ T,tagname!          Use given tag name
 	DEFINE_boolean 'edit' true "accept the auto-generated message on merging" e
 	DEFINE_string  'tagname' "" "use the given tag name" T
 	DEFINE_boolean 'nodevelopmerge' false "don't merge $BRANCH into $DEVELOP_BRANCH " 8
+	DEFINE_boolean 'create-release' false "create a GitHub/GitLab release for the tag" 9
 
 	# Override defaults with values from config
 	gitflow_override_flag_boolean   "release.finish.fetch"          "fetch"
@@ -884,6 +908,7 @@ T,tagname!          Use given tag name
 	gitflow_override_flag_string    "release.finish.message"        "message"
 	gitflow_override_flag_string    "release.finish.messagefile"    "messagefile"
 	gitflow_override_flag_boolean   "release.finish.nodevelopmerge" "nodevelopmerge"
+	gitflow_override_flag_boolean   "release.finish.create-release" "create-release"
 
 	# Parse arguments
 	parse_args "$@"
@@ -1304,6 +1329,86 @@ r,[no]remote     Delete remote branch
 	echo "Summary of actions:"
 	echo "- Release branch '$BRANCH' has been deleted."
 	flag remote && echo "- Release branch '$BRANCH' in '$ORIGIN' has been deleted."
+	echo "- You are now on branch '$(git_current_branch)'"
+	echo
+}
+
+#
+# LBEM Edition: Sync command - synchronize release branch with remote
+#
+cmd_sync() {
+	OPTIONS_SPEC="\
+git flow release sync [-h] [-p] [<name|nameprefix>]
+
+Synchronize release branch <name> with its remote counterpart.
+This will:
+  1. Stash any uncommitted changes
+  2. Pull updates from the remote release branch
+  3. Push the release branch to origin (if -p flag or config)
+  4. Restore stashed changes
+
+When <name> is omitted the current branch is used, but only if it's a release branch.
+--
+h,help!          Show this help
+showcommands!    Show git commands while executing them
+p,[no]push       Push to origin after sync
+"
+	local did_stash
+
+	# Define flags
+	DEFINE_boolean 'push' false "push to $ORIGIN after sync" p
+
+	# Override defaults with values from config
+	gitflow_override_flag_boolean "release.sync.push" "push"
+
+	# Parse arguments
+	parse_args "$@"
+
+	# Use current branch if no name is given
+	if [ "$VERSION" = "" ]; then
+		gitflow_use_current_branch_version
+	fi
+
+	# Sanity checks
+	require_branch "$BRANCH"
+
+	run_pre_hook "$VERSION" "$ORIGIN" "$BRANCH"
+
+	# Step 1: Stash uncommitted changes
+	echo "Syncing release branch '$BRANCH'..."
+	gitflow_stash_save
+	did_stash=$?
+
+	# Step 2: Fetch and pull from remote release branch
+	echo "Fetching from '$ORIGIN'..."
+	git_do fetch -q "$ORIGIN" || die "Could not fetch from '$ORIGIN'."
+
+	if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
+		echo "Pulling updates from '$ORIGIN/$BRANCH'..."
+		git_do pull --rebase -q "$ORIGIN" "$BRANCH" 2>/dev/null || {
+			warn "Could not pull from '$ORIGIN/$BRANCH'. You may need to resolve conflicts."
+			gitflow_stash_pop $did_stash
+			exit 1
+		}
+	fi
+
+	# Step 3: Push if requested
+	if flag push; then
+		echo "Pushing '$BRANCH' to '$ORIGIN'..."
+		git_do push "$ORIGIN" "$BRANCH" || warn "Could not push to '$ORIGIN'. You may need to push manually."
+	fi
+
+	# Step 4: Restore stashed changes
+	gitflow_stash_pop $did_stash
+
+	run_post_hook "$VERSION" "$ORIGIN" "$BRANCH"
+
+	echo
+	echo "Summary of actions:"
+	echo "- Release branch '$BRANCH' was synced with '$ORIGIN/$BRANCH'"
+	if flag push; then
+		echo "- Release branch '$BRANCH' was pushed to '$ORIGIN'"
+	fi
 	echo "- You are now on branch '$(git_current_branch)'"
 	echo
 }
